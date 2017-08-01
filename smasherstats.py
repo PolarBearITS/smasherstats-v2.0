@@ -1,6 +1,7 @@
 import requests
 import json
 import re
+import codecs
 from bs4 import BeautifulSoup as bsoup
 from datetime import datetime
 
@@ -106,10 +107,18 @@ class SmasherStats:
 			text += '\n'
 		return text
 
+	def outputResults(self, r, file):
+		with open(file, 'a+', encoding='utf-8') as f:
+			if r not in open(file).read():
+				f.write(r)
+			else:
+				print('Results already in file.')
+
+
 			
 
 
 s = SmasherStats(['Mang0', 'Armada'])
 r = s.getResults('Melee', 'singles', format='json')
 t = s.prettifyResults(r)
-print(t, end='')
+s.outputResults(t, 'results.txt')
