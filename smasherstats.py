@@ -8,15 +8,17 @@ class SmasherStats:
 	def __init__(self, tags):
 		self.CUR_YEAR = datetime.now().year
 		self.tags = tags
+		self.game = ''
+		self.event = ''
 		try:
 			assert(isinstance(self.tags, list))
 		except AssertionError:
 			print('TagError: Make sure your tags are passsed as a list.')
 
-	def getResults(self, game, year=0, event='', format=''):
+	def getResults(self, game, event, format=''):
 		total_results = {}
-		if year == 0:
-			year = self.CUR_YEAR
+		self.game = game
+		self.event = event
 		for tag in self.tags:
 			page = requests.get(f'http://www.ssbwiki.com/{tag}')
 			soup = bsoup(page.content, 'html.parser')
@@ -49,10 +51,7 @@ class SmasherStats:
 			total_results = json.dumps(total_results, indent=4, ensure_ascii=False)
 		return total_results
 
-	def filterResultsByYear(self, total_results, year, year2=0):
-		pass
-
-	def printResults(self, total_results):
+	def checkResults(self, total_results):
 		try:
 			assert(isinstance(total_results, dict))
 		except AssertionError:
@@ -60,30 +59,57 @@ class SmasherStats:
 				total_results = json.loads(total_results)
 			except ValueError:
 				print('TagError: Make sure your results are passsed as a dictionary or JSON, with keys being tags and values being dictionaries of results.')
+		return total_results
+
+	def filterResultsByYear(self, total_results, year, year2=0):
+		pass
+
+	def countResults(self, total_results):
+		counts = {}
+		total_results = self.checkResults(total_results)
 		for tag, results in total_results.items():
 			place_counts = {}
 			places = []
 			for tourney, info in results.items():
 				place = info['singles']
-				p = re.match('\d', place)
+				p = re.match('\d+', place)
 				t = tourney
 				year = info['date'][-4:]
 				if year not in t:
 					t += f' ({year})'
 				if p:
 					place = p.group(0)
-				if place not in place_counts:
-					place_counts[place] = [1, [t]]
-				else:
-					place_counts[place][0] += 1
-					place_counts[place][1].append(t)
-			# for place in places:
-			# 	if place not in place_counts:
-			# 		place_counts[place] = places.count(place)
-			from pprint import pprint
-			pprint(place_counts)
+				try:
+					place = int(place)
+				except:
+					pass
+				if type(place) is int:
+					if place not in place_counts:
+						place_counts[place] = [1, [t]]
+					else:
+						place_counts[place][0] += 1
+						place_counts[place][1].append(t)
+			counts[tag] = place_counts
+		return counts
+
+	def prettifyResults(self, total_results):
+		text = ''
+		total_results = self.countResults(total_results)
+		for tag, results in total_results.items():
+			title = f'{tag}\'s {self.game} {self.event} results:'
+			text += title + '\n' + '-'*len(title) + '\n'
+			for place, counts in sorted(results.items()):
+				text += f'{place} - {counts[0]}\n'
+				for tourney in counts[1]:
+					text += f' - {tourney}\n'
+				text += '\n'
+			text += '\n'
+		return text
+
+			
 
 
-s = SmasherStats(['Mang0'])
-r = s.getResults('Melee', event='singles', format='json')
-s.printResults(r)
+s = SmasherStats(['Mang0', 'Armada'])
+r = s.getResults('Melee', 'singles', format='json')
+t = s.prettifyResults(r)
+print(t, end='')
