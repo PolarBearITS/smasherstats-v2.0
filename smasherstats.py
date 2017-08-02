@@ -62,10 +62,22 @@ class SmasherStats:
 				print('TagError: Make sure your results are passsed as a dictionary or JSON, with keys being tags and values being dictionaries of results.')
 		return total_results
 
-	def filterResultsByYear(self, total_results, year, year2=0):
-		pass
+	def filterResultsByYear(self, total_results, year1, year2=0):
+		new_results = {}
+		for tag, results, in total_results.items():
+			new_tourneys = {}
+			for tourney, info in results.items():
+				tYear = int(info['date'][-4:])
+				if year2 == 0:
+					if tYear == year1:
+						new_tourneys[tourney] = info
+				else:
+					if year1 <= tYear <= year2:
+						new_tourneys[tourney] = info
+			new_results[tag] = new_tourneys
+		return new_results
 
-	def countResults(self, total_results):
+	def countResults(self, total_results, year1=0, year2=0):
 		counts = {}
 		total_results = self.checkResults(total_results)
 		for tag, results in total_results.items():
@@ -121,7 +133,8 @@ class SmasherStats:
 			
 
 
-s = SmasherStats(['Mang0', 'Armada'])
-r = s.getResults('Melee', 'singles', format='json')
+s = SmasherStats(['Mang0'])
+r = s.getResults('Melee', 'singles')
+r = s.filterResultsByYear(r, 2015, 2017)
 t = s.prettifyResults(r)
-s.outputResults(t, 'results.txt')
+s.outputResults(t)
