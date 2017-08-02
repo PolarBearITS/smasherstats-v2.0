@@ -16,7 +16,7 @@ class SmasherStats:
 		except AssertionError:
 			print('TagError: Make sure your tags are passsed as a list.')
 
-	def getResults(self, game, event, format=''):
+	def getResults(self, game, event, year=0, year2=0, format=''):
 		total_results = {}
 		self.game = game
 		self.event = event
@@ -48,6 +48,8 @@ class SmasherStats:
 					info[keys[i]] = result[1:][i]
 				player_results[result[0]] = info
 			total_results[tag] = player_results
+		if year.upper() != 'ALL':
+			total_results = self.filterResultsByYear(total_results, year, year2)
 		if format == 'json':
 			total_results = json.dumps(total_results, indent=4, ensure_ascii=False)
 		return total_results
@@ -62,22 +64,24 @@ class SmasherStats:
 				print('TagError: Make sure your results are passsed as a dictionary or JSON, with keys being tags and values being dictionaries of results.')
 		return total_results
 
-	def filterResultsByYear(self, total_results, year1, year2=0):
+	def filterResultsByYear(self, total_results, year, year2=0):
 		new_results = {}
 		for tag, results, in total_results.items():
 			new_tourneys = {}
 			for tourney, info in results.items():
 				tYear = int(info['date'][-4:])
+				if year == 0:
+					year = self.CUR_YEAR
 				if year2 == 0:
-					if tYear == year1:
+					if tYear == year:
 						new_tourneys[tourney] = info
 				else:
-					if year1 <= tYear <= year2:
+					if year <= tYear <= year2:
 						new_tourneys[tourney] = info
 			new_results[tag] = new_tourneys
 		return new_results
 
-	def countResults(self, total_results, year1=0, year2=0):
+	def countResults(self, total_results):
 		counts = {}
 		total_results = self.checkResults(total_results)
 		for tag, results in total_results.items():
@@ -134,7 +138,6 @@ class SmasherStats:
 
 
 s = SmasherStats(['Mang0'])
-r = s.getResults('Melee', 'singles')
-r = s.filterResultsByYear(r, 2015, 2017)
+r = s.getResults('Melee', 'singles', 'all')
 t = s.prettifyResults(r)
 s.outputResults(t)
