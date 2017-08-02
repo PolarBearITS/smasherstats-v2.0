@@ -107,12 +107,15 @@ class SmasherStats:
 			text += '\n'
 		return text
 
-	def outputResults(self, r, file):
-		with open(file, 'a+', encoding='utf-8') as f:
-			if r not in open(file).read():
-				f.write(r)
-			else:
-				print('Results already in file.')
+	def outputResults(self, r, file=''):
+		if file != '':
+			with open(file, 'a+', encoding='utf-8') as f:
+				if r not in open(file).read():
+					f.write(r)
+				else:
+					print('Results already in file.')
+		else:
+			print(r)
 
 
 			
