@@ -1,9 +1,15 @@
-import requests
+#Standard Library
 import json
 import re
+import sys
 import codecs
-from bs4 import BeautifulSoup as bsoup
+from collections import *
 from datetime import datetime
+from contextlib import redirect_stdout
+
+#Dependencies
+import requests
+from bs4 import BeautifulSoup as bsoup
 
 class SmasherStats:
 	def __init__(self, tags):
@@ -42,13 +48,12 @@ class SmasherStats:
 					keys.extend(('doubles', 'partner'))
 				else:
 					keys.extend(('singles', 'doubles', 'partner'))
-				name = result[0]
 				info = {}
-				for i in range(len(keys)):
-					info[keys[i]] = result[1:][i]
+				for i, key in enumerate(keys):
+					info[key] = result[1:][i]
 				player_results[result[0]] = info
 			total_results[tag] = player_results
-		if year.upper() != 'ALL':
+		if type(year) == int:
 			total_results = self.filterResultsByYear(total_results, year, year2)
 		if format == 'json':
 			total_results = json.dumps(total_results, indent=4, ensure_ascii=False)
@@ -85,28 +90,16 @@ class SmasherStats:
 		counts = {}
 		total_results = self.checkResults(total_results)
 		for tag, results in total_results.items():
-			place_counts = {}
-			places = []
+			place_counts = defaultdict(list)
 			for tourney, info in results.items():
-				place = info['singles']
-				p = re.match('\d+', place)
-				t = tourney
 				year = info['date'][-4:]
-				if year not in t:
-					t += f' ({year})'
-				if p:
-					place = p.group(0)
-				try:
-					place = int(place)
-				except:
-					pass
-				if type(place) is int:
-					if place not in place_counts:
-						place_counts[place] = [1, [t]]
-					else:
-						place_counts[place][0] += 1
-						place_counts[place][1].append(t)
-			counts[tag] = place_counts
+				if year not in tourney:
+					tourney += f' ({year})'
+				key = re.match('\d+', info['singles'])
+				if key:
+					key = key.group(0)
+					place_counts[key].append(tourney)
+			counts[tag] = dict(place_counts)
 		return counts
 
 	def prettifyResults(self, total_results):
@@ -116,28 +109,24 @@ class SmasherStats:
 			title = f'{tag}\'s {self.game} {self.event} results:'
 			text += title + '\n' + '-'*len(title) + '\n'
 			for place, counts in sorted(results.items()):
-				text += f'{place} - {counts[0]}\n'
-				for tourney in counts[1]:
+				text += f'{place} - {len(counts)}\n'
+				for tourney in counts:
 					text += f' - {tourney}\n'
 				text += '\n'
 			text += '\n'
 		return text
 
 	def outputResults(self, r, file=''):
-		if file != '':
-			with open(file, 'a+', encoding='utf-8') as f:
-				if r not in open(file).read():
-					f.write(r)
-				else:
-					print('Results already in file.')
+		f = ''
+		if file == '':
+			f = sys.stdout
 		else:
-			print(r)
-
-
-			
-
-
-s = SmasherStats(['Mang0'])
-r = s.getResults('Melee', 'singles', 'all')
+			f = open(file, 'a+', encoding='utf-8')
+			if r in open(file).read():
+				print('Results already in file.')
+				return
+		with f: f.write(r)
+s = SmasherStats(['Mang0', 'Armada'])
+r = s.getResults('Melee', event='singles', year='all')
 t = s.prettifyResults(r)
 s.outputResults(t)
