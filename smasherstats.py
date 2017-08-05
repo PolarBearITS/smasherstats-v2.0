@@ -53,8 +53,13 @@ class SmasherStats:
 					info[key] = result[1:][i]
 				player_results[result[0]] = info
 			total_results[tag] = player_results
-		if type(year) == int:
+
+		if isinstance(year, str):
+			if year.lower() != 'all':
+				raise ValueError("Make sure you pass in the year either as an integer or as 'all'")
+		elif isinstance(year, int):
 			total_results = self.filterResultsByYear(total_results, year, year2)
+
 		if format == 'json':
 			total_results = json.dumps(total_results, indent=4, ensure_ascii=False)
 		return total_results
@@ -71,18 +76,14 @@ class SmasherStats:
 
 	def filterResultsByYear(self, total_results, year, year2=0):
 		new_results = {}
+		if year == 0:
+			year = self.CUR_YEAR
 		for tag, results, in total_results.items():
 			new_tourneys = {}
-			for tourney, info in results.items():
-				tYear = int(info['date'][-4:])
-				if year == 0:
-					year = self.CUR_YEAR
-				if year2 == 0:
-					if tYear == year:
-						new_tourneys[tourney] = info
-				else:
-					if year <= tYear <= year2:
-						new_tourneys[tourney] = info
+			if year2 == 0:
+				new_tourneys = {tourney:info for (tourney, info) in results.items() if int(info['date'][-4:]) == year}
+			else:
+				new_tourneys = {tourney:info for (tourney, info) in results.items() if year <= int(info['date'][-4:]) <= year2}
 			new_results[tag] = new_tourneys
 		return new_results
 
@@ -97,7 +98,7 @@ class SmasherStats:
 					tourney += f' ({year})'
 				key = re.match('\d+', info['singles'])
 				if key:
-					key = key.group(0)
+					key = int(key.group(0))
 					place_counts[key].append(tourney)
 			counts[tag] = dict(place_counts)
 		return counts
@@ -127,6 +128,6 @@ class SmasherStats:
 				return
 		with f: f.write(r)
 s = SmasherStats(['Mang0', 'Armada'])
-r = s.getResults('Melee', event='singles', year='all')
+r = s.getResults('Melee', event='singles')
 t = s.prettifyResults(r)
 s.outputResults(t)
