@@ -19,7 +19,7 @@ smash = pysmash.SmashGG()
 class SmasherStats:
 	def __init__(self, tags):
 		self.CUR_YEAR = datetime.now().year
-		self.tags = tags
+		self.tags = list(map(str.lower, tags))
 		self.game = ''
 		self.event = ''
 		try:
@@ -148,6 +148,7 @@ class SmasherStats:
 
 		records = []
 		for i, tourney in enumerate(tourneys):
+			# print(tourney)
 			ret = f'Retrieving tournament {i+1}/{len(tourneys)}'
 			self.std_flush(ret + '.  ')
 
@@ -170,7 +171,7 @@ class SmasherStats:
 				except Exception as e:
 					continue
 			else:
-				print(tourney)
+				# print(tourney)
 				if tourney not in open('failed_slugs.txt', 'r', encoding='utf-8').read():
 					with open('failed_slugs.txt', 'a+', encoding='utf-8') as f:
 						f.write(tourney + '\n')
@@ -181,8 +182,8 @@ class SmasherStats:
 				players = smash.bracket_show_players(bracket)
 				self.std_flush(ret + '...')
 				final_bracket = False
-				if set(self.tags).issubset((p['tag'] for p in players)):
-					player_ids = {str(p['entrant_id']):p['tag'] for p in players}
+				if set(self.tags).issubset((p['tag'].lower() for p in players)):
+					player_ids = {str(p['entrant_id']):p['tag'].lower() for p in players}
 					ids = [i for i, player in player_ids.items() if player in self.tags]
 					sets = smash.bracket_show_sets(bracket)
 					for match in sets:
@@ -194,7 +195,7 @@ class SmasherStats:
 								win_counts.reverse()
 
 							record = [tourney, match['full_round_text']]
-							if 'winner' in match['full_round_text'].lower():
+							if any(round in match['full_round_text'].lower() for round in ['winner', 'pools']):
 								final_bracket = True
 							
 							outcome = ''
@@ -265,11 +266,12 @@ class SmasherStats:
 				print(f'Data written to {path}.')
 
 	def std_flush(self, t):
+		# pass
 		sys.stdout.write(t)
 		sys.stdout.write('\r')
 		sys.stdout.flush()
 
-s = SmasherStats(['Mang0'])
+s = SmasherStats(['chudat'])
 rec = s.getRecords('Melee', 'singles')
 t = s.prettifyRecords(rec)
 s.outputData(t)
