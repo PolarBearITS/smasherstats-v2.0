@@ -1,15 +1,20 @@
 #Standard Library
+import codecs
 import json
+import pickle
 import re
 import sys
-import codecs
 from collections import *
-from datetime import datetime
 from contextlib import redirect_stdout
+from datetime import datetime
 
 #Dependencies
+import pysmash
 import requests
+from prettytable import PrettyTable, ALL
 from bs4 import BeautifulSoup as bsoup
+
+smash = pysmash.SmashGG()
 
 class SmasherStats:
 	def __init__(self, tags):
@@ -37,21 +42,23 @@ class SmasherStats:
 			tables.contents = [t for t in tables.contents if t != '\n']
 			player_results = {}
 			for row in tables.contents[1:]:
-				row.contents = [r for r in row.contents if r != '\n']
-				result = [r.text.strip('\n').strip(' ') for r in row.contents]
-				keys = ['date']
+				result = [r.text.strip('\n').strip(' ') for r in row.contents if r != '\n']
+				keys = []
 				if event == 'singles':
 					result = result[:-2]
-					keys.append('singles')
+					keys = ['singles']
 				elif event == 'doubles':
-					result = result[:-3] + result[-2:]
-					keys.extend(('doubles', 'partner'))
-				else:
-					keys.extend(('singles', 'doubles', 'partner'))
-				info = {}
-				for i, key in enumerate(keys):
-					info[key] = result[1:][i]
-				player_results[result[0]] = info
+					result = result[:2] + result[-2:]
+					keys = ['doubles', 'partner']
+				keys = ['date'] + keys
+				try:
+					assert(any(c.isdigit() for c in result[2]))
+					info = {}
+					for i, key in enumerate(keys):
+						info[key] = result[1:][i]
+					player_results[result[0]] = info
+				except:
+					continue
 			total_results[tag] = player_results
 
 		if isinstance(year, str):
@@ -96,7 +103,9 @@ class SmasherStats:
 				year = info['date'][-4:]
 				if year not in tourney:
 					tourney += f' ({year})'
-				key = re.match('\d+', info['singles'])
+				if self.event == 'doubles':
+					tourney += f' \n\t{info["partner"]}'
+				key = re.match('\d+', info[self.event])
 				if key:
 					key = int(key.group(0))
 					place_counts[key].append(tourney)
@@ -117,17 +126,153 @@ class SmasherStats:
 			text += '\n'
 		return text
 
-	def outputResults(self, r, file=''):
+	def getRecords(self, game, event, year=0, year2=0):
+		if len(self.tags) > 2:
+			raise Exception("Records can only be retrieved for 1 or 2 players; no more, no less.")
+		total_results = self.getResults(game, event, year, year2)
+		tourneys = []
+		for tag, results in total_results.items():
+			tourneys.append([tourney for tourney in results])
+		if len(self.tags) == 1:
+			tourneys = tourneys[0]
+		elif len(self.tags) == 2:
+			tourneys = [t for t in tourneys[0] if t in tourneys[1]]
+
+		slugs = {}
+		with open('slugs.pk', 'rb') as s:
+			slugs = pickle.load(s)
+
+		event_slugs = [self.getEventSlug(game, event), 
+					   self.getEventSlug(game, event) + '-1', 
+					   '-'.join(['super', 'smash', 'bros'] + ['for']*(game=='Wii U') + [game.lower()])]
+
+		records = []
+		for i, tourney in enumerate(tourneys):
+			ret = f'Retrieving tournament {i+1}/{len(tourneys)}'
+			self.std_flush(ret + '.  ')
+
+			slug = ''
+			newSlug = False
+			newSuccessfulSlug = False
+			if tourney in slugs:
+				slug = slugs[tourney]
+			else:
+				slug = self.getTourneySlug(tourney)
+				newSlug = True
+
+			for event_slug in event_slugs:
+				try:
+					t = smash.tournament_show_event_brackets(slug, event_slug)
+					if newSlug:
+						slugs[tourney] = slug
+						newSuccessfulSlug = True
+					break
+				except Exception as e:
+					continue
+			else:
+				print(tourney)
+				if tourney not in open('failed_slugs.txt', 'r', encoding='utf-8').read():
+					with open('failed_slugs.txt', 'a+', encoding='utf-8') as f:
+						f.write(tourney + '\n')
+
+			self.std_flush(ret + '.. ')
+
+			for bracket in reversed(t['bracket_ids']):
+				players = smash.bracket_show_players(bracket)
+				self.std_flush(ret + '...')
+				final_bracket = False
+				if set(self.tags).issubset((p['tag'] for p in players)):
+					player_ids = {str(p['entrant_id']):p['tag'] for p in players}
+					ids = [i for i, player in player_ids.items() if player in self.tags]
+					sets = smash.bracket_show_sets(bracket)
+					for match in sets:
+						winner_loser = [match['entrant_1_id'], match['entrant_2_id']]
+						win_counts = [match['entrant_1_score'], match['entrant_2_score']]
+						if all(i in winner_loser for i in ids):
+							if ids[0] != winner_loser[0]:
+								winner_loser.reverse()
+								win_counts.reverse()
+
+							record = [tourney, match['full_round_text']]
+							if 'winner' in match['full_round_text'].lower():
+								final_bracket = True
+							
+							outcome = ''
+							if len(self.tags) == 1:
+								tag = player_ids[match['entrant_1_id']]
+								if tag == self.tags[0]:
+									tag = player_ids[match['entrant_2_id']]
+								record.append(tag)
+								if ids[0] == match['winner_id']:
+									outcome = 'WIN'
+								else:
+									outcome = 'LOSS'
+							else:
+								outcome = self.tags[ids.index(match['winner_id'])]
+							record += [win_counts, outcome]
+							records.append(record)
+					if final_bracket:
+						break
+
+		if newSuccessfulSlug:
+			with open('slugs.pk', 'wb') as s:
+				pickle.dump(slugs, s)
+
+		return records
+			
+	def getTourneySlug(self, name):
+		return '-'.join(re.sub(r'\'|\"', '', name.lower()).split())
+
+	def getEventSlug(self, game, event):
+		return '-'.join(game.lower().split()) + '-' + event.lower()
+
+	def prettifyRecords(self, records):
+		pt = PrettyTable()
+		fnames = ['Tournament', 'Round']
+		if len(self.tags) == 1:
+			fnames += [f'{self.tags[0]} vs. ↓', 'Score', 'Outcome']
+		else:
+			fnames += [' vs. '.join(self.tags), 'Winner']
+		pt.field_names = fnames
+
+		for i, record in enumerate(records):
+			pretty_record = record.copy()
+			if i != 0:
+				if records[i-1][0] == record[0]:
+					pretty_record[0] = ''
+				else:
+					pt.add_row(['']*len(pt.field_names))
+			pt.add_row([' - '.join(map(str, rec)) if isinstance(rec, list) else rec for rec in pretty_record])
+		
+		return pt
+
+	def outputData(self, r, file=''):
 		f = ''
+		path = ''
+		if isinstance(r, PrettyTable):
+			r = r.get_string() + '\n\n'
 		if file == '':
 			f = sys.stdout
 		else:
+			path = re.sub(r'\/|\\', ' ', file).split()[-1]
 			f = open(file, 'a+', encoding='utf-8')
 			if r in open(file).read():
-				print('Results already in file.')
+				print(f'Results already in {path}.')
 				return
-		with f: f.write(r)
-s = SmasherStats(['Mang0', 'Armada'])
-r = s.getResults('Melee', event='singles')
-t = s.prettifyResults(r)
-s.outputResults(t)
+		with f:
+			f.write(r)
+			if file != '':
+				print(f'Data written to {path}.')
+
+	def std_flush(self, t):
+		sys.stdout.write(t)
+		sys.stdout.write('\r')
+		sys.stdout.flush()
+
+s = SmasherStats(['Mang0'])
+rec = s.getRecords('Melee', 'singles')
+t = s.prettifyRecords(rec)
+s.outputData(t)
+# r = s.getResults('Melee', 'singles')
+# t = s.prettifyResults(r)
+# s.outputData(t)
