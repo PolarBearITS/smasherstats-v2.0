@@ -1,4 +1,4 @@
-#Standard Library
+# Standard Library
 import codecs
 import json
 import pickle
@@ -8,7 +8,7 @@ from collections import *
 from contextlib import redirect_stdout
 from datetime import datetime
 
-#Dependencies
+# Dependencies
 import pysmash
 import requests
 from prettytable import PrettyTable, ALL
@@ -16,10 +16,12 @@ from bs4 import BeautifulSoup as bsoup
 
 smash = pysmash.SmashGG()
 
+
 class SmasherStats:
 	def __init__(self, tags):
 		self.CUR_YEAR = datetime.now().year
-		self.tags = list(map(str.lower, tags))
+		# self.tags = list(map(str.lower, tags))
+		self.tags = tags
 		self.game = ''
 		self.event = ''
 		try:
@@ -182,9 +184,11 @@ class SmasherStats:
 				players = smash.bracket_show_players(bracket)
 				self.std_flush(ret + '...')
 				final_bracket = False
-				if set(self.tags).issubset((p['tag'].lower() for p in players)):
-					player_ids = {str(p['entrant_id']):p['tag'].lower() for p in players}
-					ids = [i for i, player in player_ids.items() if player in self.tags]
+				ltags = list(map(str.lower, self.tags))
+				if set(ltags).issubset((p['tag'].lower() for p in players)):
+					player_ids = {str(p['entrant_id']):p['tag'] for p in players}
+					ids = [i for i, player in player_ids.items() if player.lower() in ltags]
+					print(ids)
 					sets = smash.bracket_show_sets(bracket)
 					for match in sets:
 						winner_loser = [match['entrant_1_id'], match['entrant_2_id']]
@@ -201,7 +205,7 @@ class SmasherStats:
 							outcome = ''
 							if len(self.tags) == 1:
 								tag = player_ids[match['entrant_1_id']]
-								if tag == self.tags[0]:
+								if tag.lower() == ltags[0]:
 									tag = player_ids[match['entrant_2_id']]
 								record.append(tag)
 								if ids[0] == match['winner_id']:
