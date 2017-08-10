@@ -150,8 +150,8 @@ class SmasherStats:
 
 		records = []
 
-		set_counts = dict(zip(self.tags, [0]*len(self.tags)))
-		game_counts = {}
+		set_counts = Counter(dict(zip(self.tags, [0]*len(self.tags))))
+		game_counts = Counter(dict(zip(self.tags, [0]*len(self.tags))))
 
 		for i, tourney in enumerate(tourneys):
 			# print(tourney)
@@ -223,7 +223,7 @@ class SmasherStats:
 								num_winner = ids.index(match['winner_id'])
 								outcome = self.tags[num_winner]
 								set_counts[outcome] += 1
-								game_counts = dict(zip(self.tags, list(map(str, win_counts))))
+								game_counts += Counter(dict(zip(self.tags, win_counts)))
 							record += [win_counts, outcome]
 							records.append(record)
 					if not found:
@@ -253,8 +253,8 @@ class SmasherStats:
 		pt.field_names = fnames
 
 		table = records[0]
-		s_counts = records[1]
-		g_counts = records[2]
+		s_counts = {k:str(v) for k, v in records[1].items()}
+		g_counts = {k:str(v) for k, v in records[2].items()}
 
 		for i, record in enumerate(table):
 			pretty_record = record.copy()
