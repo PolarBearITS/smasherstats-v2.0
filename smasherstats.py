@@ -149,6 +149,10 @@ class SmasherStats:
 					   '-'.join(['super', 'smash', 'bros'] + ['for']*(game=='Wii U') + [game.lower()])]
 
 		records = []
+
+		set_counts = dict(zip(self.tags, [0]*len(self.tags)))
+		game_counts = {}
+
 		for i, tourney in enumerate(tourneys):
 			# print(tourney)
 			ret = f'Retrieving tournament {i+1}/{len(tourneys)}'
@@ -157,6 +161,7 @@ class SmasherStats:
 			slug = ''
 			newSlug = False
 			newSuccessfulSlug = False
+
 			if tourney in slugs:
 				slug = slugs[tourney]
 			else:
@@ -188,14 +193,16 @@ class SmasherStats:
 				if set(ltags).issubset((p['tag'].lower() for p in players)):
 					player_ids = {str(p['entrant_id']):p['tag'] for p in players}
 					ids = [i for i, player in player_ids.items() if player.lower() in ltags]
-					print(ids)
+					# print(ids)
 					sets = smash.bracket_show_sets(bracket)
+					found = False
 					for match in sets:
-						winner_loser = [match['entrant_1_id'], match['entrant_2_id']]
+						entrants = [match['entrant_1_id'], match['entrant_2_id']]
 						win_counts = [match['entrant_1_score'], match['entrant_2_score']]
-						if all(i in winner_loser for i in ids):
-							if ids[0] != winner_loser[0]:
-								winner_loser.reverse()
+						if all(i in entrants for i in ids):
+							found = True
+							if ids[0] != entrants[0]:
+								entrants.reverse()
 								win_counts.reverse()
 
 							record = [tourney, match['full_round_text']]
@@ -213,17 +220,22 @@ class SmasherStats:
 								else:
 									outcome = 'LOSS'
 							else:
-								outcome = self.tags[ids.index(match['winner_id'])]
+								num_winner = ids.index(match['winner_id'])
+								outcome = self.tags[num_winner]
+								set_counts[outcome] += 1
+								game_counts = dict(zip(self.tags, list(map(str, win_counts))))
 							record += [win_counts, outcome]
 							records.append(record)
-					if final_bracket:
+					if not found:
 						break
+				if final_bracket:
+					break
 
 		if newSuccessfulSlug:
 			with open('slugs.pk', 'wb') as s:
 				pickle.dump(slugs, s)
 
-		return records
+		return records, set_counts, game_counts
 			
 	def getTourneySlug(self, name):
 		return '-'.join(re.sub(r'\'|\"', '', name.lower()).split())
@@ -240,32 +252,50 @@ class SmasherStats:
 			fnames += [' vs. '.join(self.tags), 'Winner']
 		pt.field_names = fnames
 
-		for i, record in enumerate(records):
+		table = records[0]
+		s_counts = records[1]
+		g_counts = records[2]
+
+		for i, record in enumerate(table):
 			pretty_record = record.copy()
 			if i != 0:
-				if records[i-1][0] == record[0]:
+				if table[i-1][0] == record[0]:
 					pretty_record[0] = ''
 				else:
 					pt.add_row(['']*len(pt.field_names))
 			pt.add_row([' - '.join(map(str, rec)) if isinstance(rec, list) else rec for rec in pretty_record])
 		
-		return pt
+		return pt, s_counts, g_counts
+
+	def getSetTable(self, game, event, year=0, year2=0):
+		print(self.getRecords(game, event, year, year2)[1])
+
 
 	def outputData(self, r, file=''):
 		f = ''
 		path = ''
-		if isinstance(r, PrettyTable):
-			r = r.get_string() + '\n\n'
+		table = None
+		extra = ''
+		if len(r) > 1:
+			table = r[0]
+			s_counts = list(list(map(str, r)) for r in r[1].items())
+			g_counts = list(r[2].items())
+			extra = 'Total Set Count: ' + ' '.join(s_counts[0]) + ' - ' + ' '.join(reversed(s_counts[1])) + '\n'
+			extra += 'Total Game Count: ' + ' '.join(g_counts[0]) + ' - ' + ' '.join(reversed(g_counts[1])) + '\n'
+		else:
+			table = r
+		if isinstance(table, PrettyTable):
+			table = table.get_string() + '\n\n' + extra
 		if file == '':
 			f = sys.stdout
 		else:
 			path = re.sub(r'\/|\\', ' ', file).split()[-1]
 			f = open(file, 'a+', encoding='utf-8')
-			if r in open(file).read():
+			if table in open(file).read():
 				print(f'Results already in {path}.')
 				return
 		with f:
-			f.write(r)
+			f.write(table)
 			if file != '':
 				print(f'Data written to {path}.')
 
@@ -275,10 +305,15 @@ class SmasherStats:
 		sys.stdout.write('\r')
 		sys.stdout.flush()
 
-s = SmasherStats(['chudat'])
+s = SmasherStats(['Mang0', 'Leffen'])
+# t = s.getSetTable('Melee', 'singles')
+
+### Records
 rec = s.getRecords('Melee', 'singles')
 t = s.prettifyRecords(rec)
 s.outputData(t)
+
+### Results
 # r = s.getResults('Melee', 'singles')
 # t = s.prettifyResults(r)
 # s.outputData(t)
