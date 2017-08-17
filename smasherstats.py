@@ -4,8 +4,7 @@ import json
 import pickle
 import re
 import sys
-from collections import *
-from contextlib import redirect_stdout
+from collections import defaultdict
 from datetime import datetime
 
 # Dependencies
@@ -20,19 +19,45 @@ smash = pysmash.SmashGG()
 class SmasherStats:
 	def __init__(self, tags):
 		self.CUR_YEAR = datetime.now().year
-		# self.tags = list(map(str.lower, tags))
 		self.tags = tags
 		self.game = ''
 		self.event = ''
+		self.format = ''
+		self.year_range = []
+
+		self.total_results = {}
+		self.pretty_results = ''
+
+		self.total_records = {}
+		self.pretty_records = ''
+		self.set_counts = dict((tag, 0) for tag in self.tags)
+		self.game_counts = dict((tag, 0) for tag in self.tags)
+
+		self.set_table = {}
 		try:
 			assert(isinstance(self.tags, list))
 		except AssertionError:
 			print('TagError: Make sure your tags are passsed as a list.')
 
-	def getResults(self, game, event, year=0, year2=0, format=''):
+	def getResults(self, game, event, year=0, year2=0, results_format='', types = ''):
 		total_results = {}
 		self.game = game
 		self.event = event
+		self.format = results_format
+		results_filter = False
+		if isinstance(year, str):
+			if year.lower() != 'all':
+				raise ValueError("Make sure you pass in the year either as an integer or as 'all'")
+		elif isinstance(year, int):
+			results_filter = True
+			if year == 0:
+				self.year_range = [self.CUR_YEAR]
+			else:
+				self.year_range = [year]
+				if year2 != 0:
+					self.year_range.append(year2)
+		if not isinstance(year2, int):
+			raise ValueError("Make sure you pass in the second year as an integer")
 		for tag in self.tags:
 			page = requests.get(f'http://www.ssbwiki.com/{tag}')
 			soup = bsoup(page.content, 'html.parser')
@@ -63,47 +88,48 @@ class SmasherStats:
 					continue
 			total_results[tag] = player_results
 
-		if isinstance(year, str):
-			if year.lower() != 'all':
-				raise ValueError("Make sure you pass in the year either as an integer or as 'all'")
-		elif isinstance(year, int):
-			total_results = self.filterResultsByYear(total_results, year, year2)
+		self.total_results = total_results
 
-		if format == 'json':
-			total_results = json.dumps(total_results, indent=4, ensure_ascii=False)
-		return total_results
+		if results_filter:
+			self.filterResultsByYear()
 
-	def checkResults(self, total_results):
+		if self.format == 'json':
+			return json.dumps(self.total_results, indent=4, ensure_ascii=False)
+		
+		return self.total_results
+
+	def checkResults(self):
 		try:
-			assert(isinstance(total_results, dict))
+			assert(isinstance(self.total_results, dict))
 		except AssertionError:
-			try:
-				total_results = json.loads(total_results)
-			except ValueError:
-				print('TagError: Make sure your results are passsed as a dictionary or JSON, with keys being tags and values being dictionaries of results.')
-		return total_results
+			# if self.format == 'json':
+			# 	self.total_results = json.loads(self.total_results)
+			# else:
+			print('TagError: Make sure your results are passsed as a dictionary or JSON, with keys being tags and values being dictionaries of results.')
+			return False
+		return True
 
-	def filterResultsByYear(self, total_results, year, year2=0):
+	def filterResultsByYear(self):
 		new_results = {}
-		if year == 0:
-			year = self.CUR_YEAR
-		for tag, results, in total_results.items():
+		for tag, results, in self.total_results.items():
 			new_tourneys = {}
-			if year2 == 0:
-				new_tourneys = {tourney:info for (tourney, info) in results.items() if int(info['date'][-4:]) == year}
-			else:
-				new_tourneys = {tourney:info for (tourney, info) in results.items() if year <= int(info['date'][-4:]) <= year2}
+			for tourney, info in results.items():
+				if int(info['date'][-4:]) in list(range(self.year_range[0], self.year_range[-1]+1)):
+					new_tourneys[tourney] = info
 			new_results[tag] = new_tourneys
-		return new_results
 
-	def countResults(self, total_results):
+		self.total_results = new_results
+
+		return self.total_results
+
+	def countResults(self):
 		counts = {}
-		total_results = self.checkResults(total_results)
-		for tag, results in total_results.items():
+		self.checkResults()
+		for tag, results in self.total_results.items():
 			place_counts = defaultdict(list)
 			for tourney, info in results.items():
 				year = info['date'][-4:]
-				if year not in tourney:
+				if year not in tourney and len(self.year_range) != 1:
 					tourney += f' ({year})'
 				if self.event == 'doubles':
 					tourney += f' \n\t{info["partner"]}'
@@ -114,26 +140,34 @@ class SmasherStats:
 			counts[tag] = dict(place_counts)
 		return counts
 
-	def prettifyResults(self, total_results):
+	def prettifyResults(self):
 		text = ''
-		total_results = self.countResults(total_results)
-		for tag, results in total_results.items():
-			title = f'{tag}\'s {self.game} {self.event} results:'
-			text += title + '\n' + '-'*len(title) + '\n'
+		endings = ['th', 'st', 'nd', 'rd'] + ['th']*6
+		counts = self.countResults()
+		for tag, results in list(counts.items()):
+			title = f'{tag}\'s {self.game} {self.event} results'
+			if len(self.year_range) == 1:
+				title += f' for {self.year_range[0]}:'
+			elif len(self.year_range) == 2:
+				str_range = ' through '.join(map(str, self.year_range))
+				title += f' from {str_range}:'
+			else:
+				title += ':'
+			text += '-'*(len(title)+2) + '\n ' + title + '\n' + '-'*(len(title)+2) + '\n'
 			for place, counts in sorted(results.items()):
-				text += f'{place} - {len(counts)}\n'
+				text += f'{place}{endings[place % 10]} - {len(counts)}\n'
 				for tourney in counts:
 					text += f' - {tourney}\n'
 				text += '\n'
-			text += '\n'
-		return text
+		self.pretty_results = text
+		return self.pretty_results
 
 	def getRecords(self, game, event, year=0, year2=0):
 		if len(self.tags) > 2:
 			raise Exception("Records can only be retrieved for 1 or 2 players; no more, no less.")
-		total_results = self.getResults(game, event, year, year2)
+		self.getResults(game, event, year, year2)
 		tourneys = []
-		for tag, results in total_results.items():
+		for tag, results in self.total_results.items():
 			tourneys.append([tourney for tourney in results])
 		if len(self.tags) == 1:
 			tourneys = tourneys[0]
@@ -150,11 +184,7 @@ class SmasherStats:
 
 		records = []
 
-		set_counts = Counter(dict(zip(self.tags, [0]*len(self.tags))))
-		game_counts = Counter(dict(zip(self.tags, [0]*len(self.tags))))
-
 		for i, tourney in enumerate(tourneys):
-			# print(tourney)
 			ret = f'Retrieving tournament {i+1}/{len(tourneys)}'
 			self.std_flush(ret + '.  ')
 
@@ -222,8 +252,8 @@ class SmasherStats:
 							else:
 								num_winner = ids.index(match['winner_id'])
 								outcome = self.tags[num_winner]
-								set_counts[outcome] += 1
-								game_counts += Counter(dict(zip(self.tags, win_counts)))
+								self.set_counts[outcome] += 1
+								self.game_counts = dict((pair[0], pair[1]+win_counts[i]) for i, pair in enumerate(self.game_counts.items()))
 							record += [win_counts, outcome]
 							records.append(record)
 					if not found:
@@ -235,7 +265,8 @@ class SmasherStats:
 			with open('slugs.pk', 'wb') as s:
 				pickle.dump(slugs, s)
 
-		return records, set_counts, game_counts
+		self.total_records = records
+		return self.total_records
 			
 	def getTourneySlug(self, name):
 		return '-'.join(re.sub(r'\'|\"', '', name.lower()).split())
@@ -243,7 +274,7 @@ class SmasherStats:
 	def getEventSlug(self, game, event):
 		return '-'.join(game.lower().split()) + '-' + event.lower()
 
-	def prettifyRecords(self, records):
+	def prettifyRecords(self):
 		pt = PrettyTable()
 		fnames = ['Tournament', 'Round']
 		if len(self.tags) == 1:
@@ -252,52 +283,48 @@ class SmasherStats:
 			fnames += [' vs. '.join(self.tags), 'Winner']
 		pt.field_names = fnames
 
-		table = records[0]
-		s_counts = {k:str(v) for k, v in records[1].items()}
-		g_counts = {k:str(v) for k, v in records[2].items()}
-
-		for i, record in enumerate(table):
+		for i, record in enumerate(self.total_records):
 			pretty_record = record.copy()
 			if i != 0:
-				if table[i-1][0] == record[0]:
+				if self.total_records[i-1][0] == record[0]:
 					pretty_record[0] = ''
 				else:
 					pt.add_row(['']*len(pt.field_names))
 			pt.add_row([' - '.join(map(str, rec)) if isinstance(rec, list) else rec for rec in pretty_record])
-		
-		return pt, s_counts, g_counts
+
+		s_counts = list(list(map(str, s)) for s in self.set_counts.items())
+		g_counts = list(list(map(str, g)) for g in self.game_counts.items())
+		extra = 'Total Set Count: ' + ' '.join(s_counts[0]) + ' - ' + ' '.join(reversed(s_counts[1])) + '\n'
+		extra += 'Total Game Count: ' + ' '.join(g_counts[0]) + ' - ' + ' '.join(reversed(g_counts[1])) + '\n'
+		self.pretty_records = pt.get_string() + '\n\n' + extra
+
+		return self.pretty_records
 
 	def getSetTable(self, game, event, year=0, year2=0):
 		print(self.getRecords(game, event, year, year2)[1])
 
+	def prettifyData(self):
+		self.prettifyResults()
+		self.prettifyRecords()
 
-	def outputData(self, r, file=''):
-		f = ''
-		path = ''
-		table = None
-		extra = ''
-		if len(r) > 1:
-			table = r[0]
-			s_counts = list(list(map(str, r)) for r in r[1].items())
-			g_counts = list(r[2].items())
-			extra = 'Total Set Count: ' + ' '.join(s_counts[0]) + ' - ' + ' '.join(reversed(s_counts[1])) + '\n'
-			extra += 'Total Game Count: ' + ' '.join(g_counts[0]) + ' - ' + ' '.join(reversed(g_counts[1])) + '\n'
-		else:
-			table = r
-		if isinstance(table, PrettyTable):
-			table = table.get_string() + '\n\n' + extra
-		if file == '':
-			f = sys.stdout
-		else:
+	def outputData(self, file=''):
+		if self.pretty_results != '':
+			self.output(self.pretty_results, file)
+		if self.pretty_records != '':
+			self.output(self.pretty_records, file)
+
+	
+	def output(self, data, file):
+		if file != '':
 			path = re.sub(r'\/|\\', ' ', file).split()[-1]
-			f = open(file, 'a+', encoding='utf-8')
-			if table in open(file).read():
+			if data in open(file).read():
 				print(f'Results already in {path}.')
-				return
-		with f:
-			f.write(table)
-			if file != '':
+				return None
+			with open(file, 'a+', encoding='utf-8'):
+				f.write(data)
 				print(f'Data written to {path}.')
+		else:
+			print(data)
 
 	def std_flush(self, t):
 		# pass
@@ -305,15 +332,16 @@ class SmasherStats:
 		sys.stdout.write('\r')
 		sys.stdout.flush()
 
-s = SmasherStats(['Mang0', 'Leffen'])
+s = SmasherStats(['Mang0', 'Armada'])
 # t = s.getSetTable('Melee', 'singles')
 
 ### Records
-rec = s.getRecords('Melee', 'singles')
-t = s.prettifyRecords(rec)
-s.outputData(t)
+s.getRecords('Melee', 'singles')
+s.prettifyRecords()
 
 ### Results
-# r = s.getResults('Melee', 'singles')
-# t = s.prettifyResults(r)
-# s.outputData(t)
+s.getResults('Melee', 'singles')
+s.prettifyResults()
+
+
+s.outputData()
