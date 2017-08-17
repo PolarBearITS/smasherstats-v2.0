@@ -292,11 +292,13 @@ class SmasherStats:
 					pt.add_row(['']*len(pt.field_names))
 			pt.add_row([' - '.join(map(str, rec)) if isinstance(rec, list) else rec for rec in pretty_record])
 
-		s_counts = list(list(map(str, s)) for s in self.set_counts.items())
-		g_counts = list(list(map(str, g)) for g in self.game_counts.items())
-		extra = 'Total Set Count: ' + ' '.join(s_counts[0]) + ' - ' + ' '.join(reversed(s_counts[1])) + '\n'
-		extra += 'Total Game Count: ' + ' '.join(g_counts[0]) + ' - ' + ' '.join(reversed(g_counts[1])) + '\n'
-		self.pretty_records = pt.get_string() + '\n\n' + extra
+		extra = ''
+		if not all(v == 0 for v in self.set_counts.values()):
+			s_counts = list(list(map(str, s)) for s in self.set_counts.items())
+			g_counts = list(list(map(str, g)) for g in self.game_counts.items())
+			extra = '\nTotal Set Count: ' + ' '.join(s_counts[0]) + ' - ' + ' '.join(reversed(s_counts[1])) + '\n'
+			extra += 'Total Game Count: ' + ' '.join(g_counts[0]) + ' - ' + ' '.join(reversed(g_counts[1])) + '\n'
+		self.pretty_records = pt.get_string() + '\n' + extra
 
 		return self.pretty_records
 
@@ -332,7 +334,7 @@ class SmasherStats:
 		sys.stdout.write('\r')
 		sys.stdout.flush()
 
-s = SmasherStats(['Mang0', 'Armada'])
+s = SmasherStats(['Mang0'])
 # t = s.getSetTable('Melee', 'singles')
 
 ### Records
