@@ -1,5 +1,6 @@
 # Standard Library
 import codecs
+import itertools
 import json
 import pickle
 import re
@@ -30,8 +31,8 @@ class SmasherStats:
 
 		self.total_records = {}
 		self.pretty_records = ''
-		self.set_counts = dict((tag, 0) for tag in self.tags)
-		self.game_counts = dict((tag, 0) for tag in self.tags)
+		self.game_counts = {}
+		self.set_counts = {}
 
 		self.set_table = {}
 		try:
@@ -166,6 +167,8 @@ class SmasherStats:
 		if len(self.tags) > 2:
 			raise Exception("Records can only be retrieved for 1 or 2 players; no more, no less.")
 		self.getResults(game, event, year, year2)
+		self.set_counts = dict((tag, 0) for tag in self.tags)
+		self.game_counts = dict((tag, 0) for tag in self.tags)
 		tourneys = []
 		for tag, results in self.total_results.items():
 			tourneys.append([tourney for tourney in results])
@@ -183,6 +186,7 @@ class SmasherStats:
 					   '-'.join(['super', 'smash', 'bros'] + ['for']*(game=='Wii U') + [game.lower()])]
 
 		records = []
+		newSuccessfulSlug = False
 
 		for i, tourney in enumerate(tourneys):
 			ret = f'Retrieving tournament {i+1}/{len(tourneys)}'
@@ -212,6 +216,7 @@ class SmasherStats:
 				if tourney not in open('failed_slugs.txt', 'r', encoding='utf-8').read():
 					with open('failed_slugs.txt', 'a+', encoding='utf-8') as f:
 						f.write(tourney + '\n')
+				continue
 
 			self.std_flush(ret + '.. ')
 
@@ -303,7 +308,15 @@ class SmasherStats:
 		return self.pretty_records
 
 	def getSetTable(self, game, event, year=0, year2=0):
-		print(self.getRecords(game, event, year, year2)[1])
+		old_tags = self.tags
+		if len(self.tags) > 1:
+			for tags in itertools.combinations(self.tags, 2):
+				self.tags = list(tags)
+				self.getRecords(game, event, year, year2)
+				print(self.set_counts)
+		self.tags = old_tags
+		# self.getRecords(game, event, year, year2)
+		# print(self.set_counts)
 
 	def prettifyData(self):
 		self.prettifyResults()
@@ -333,17 +346,3 @@ class SmasherStats:
 		sys.stdout.write(t)
 		sys.stdout.write('\r')
 		sys.stdout.flush()
-
-s = SmasherStats(['Mang0'])
-# t = s.getSetTable('Melee', 'singles')
-
-### Records
-s.getRecords('Melee', 'singles')
-s.prettifyRecords()
-
-### Results
-s.getResults('Melee', 'singles')
-s.prettifyResults()
-
-
-s.outputData()
