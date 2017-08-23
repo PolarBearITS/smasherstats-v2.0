@@ -8,7 +8,7 @@ setup(
     author_email = 'michael.krasnitski@gmail.com',
     license = 'MIT',
     url = 'https://github.com/PolarBearITS/smasherstats-v2.0'
-    download_url = 'https://github.com/PolarBearITS/smasherstats-v2.0/tarball/2.0'
+    download_url = 'https://github.com/PolarBearITS/smasherstats-v2.0/tarball/2.0.0'
     install_requires = [
     	'requests',
     	'beautifulsoup4',
